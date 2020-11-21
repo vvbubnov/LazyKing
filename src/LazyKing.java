@@ -1,6 +1,7 @@
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 /*
  * В одной далекой стране правил крайне сумасбродный король, который больше всего на свете любил власть.
@@ -61,103 +62,95 @@ public class LazyKing {
 }
 
 class UnluckyVassal {
-    public void printReportForKing(List<String> pollResults) {
 
-        // здесь будут зарегестрированы все наши слуги
-        List<Vassal> vassalList = new ArrayList<>();
+    // количество поклонов, которые должен сделать вассал своему сюзерену
+    // если по нормальному - это отступ
+    static final String TAB = "    ";
+
+    // здесь будут зарегестрированы все наши слуги
+    List<Vassal> vassalList = new ArrayList<>();
+
+    public void printReportForKing(List<String> pollResults) {
 
         // бежим построчно по исходному тексту
         for (String note : pollResults) {
 
             // получаем массив стрингов через регулярочку, разделители ": " и ", "
+            // это ни что иное как имена действующих лиц
             String[] names = note.split(": |, ");
 
-            // 1) у нас на руках массив с единственным элементом. это говорит о том,
-            //      что мы получили вассала у которого нет подчинённых
-            if (names.length == 1) {
-                // пытаемся получить вассала из списка зарегестрированных
-                // если такового нет - создаём нового и регистрируем в листе
-                Vassal existedVassal = getExistedVassalByName(vassalList, names[0]);
-                if (existedVassal == null) {
-                    vassalList.add(new Vassal(names[0]));
-                }
-            // 2) полученный массив содержит более одного элемента
-            } else {
-                // 2.1) первый элемент такого массива - хозяин остальных элементов
-                Vassal senior = getExistedVassalByName(vassalList, names[0]);
-                if (senior == null) {
-                    senior = new Vassal(names[0]);
-                    vassalList.add(senior);
-                }
+            // 1)   у данного массива не может не быть первого элемента
+            //      проверяем изветрен ли он нам, если нет - регистрируем
+            Optional<Vassal> senior = getExistedVassalByName(names[0]);
+            if (senior.isEmpty()) {
+                Vassal newSenior = new Vassal(names[0]);
+                vassalList.add(newSenior);
+                senior = Optional.of(newSenior);
+            }
 
-                // 2.2) перебираем остальные элементы - это слуги первого элемента
-                //      добавляем их в список вассалов первого элемента,
-                //      выставляем флажок на true - эти вассалы теперь не являются прямыми вассалами короля
-                for (int i = 1; i < names.length; i++) {
-                    Vassal existedVassal = getExistedVassalByName(vassalList, names[i]);
-                    if (existedVassal == null) {
-                        Vassal newVassal = new Vassal(names[i]);
-                        vassalList.add(newVassal);
-                        senior.vassals.add(newVassal);
-                        newVassal.setNotKingsVassal(true);
-                    } else {
-                        senior.vassals.add(existedVassal);
-                        existedVassal.setNotKingsVassal(true);
-                    }
+            // 2)   перебираем остальные элементы - это слуги первого элемента
+            //      добавляем их в список вассалов первого элемента,
+            //      выставляем флажок на false - эти вассалы теперь не являются прямыми вассалами короля
+            for (int i = 1; i < names.length; i++) {
+                if (senior.get().vassals == null ){
+                    senior.get().vassals = new ArrayList<>();
+                }
+                Optional<Vassal> existedVassal = getExistedVassalByName(names[i]);
+                if (existedVassal.isEmpty()) {
+                    Vassal newVassal = new Vassal(names[i]);
+                    vassalList.add(newVassal);
+                    senior.get().vassals.add(newVassal);
+                    newVassal.setKingsVassal(false);
+                } else {
+                    senior.get().vassals.add(existedVassal.get());
+                    existedVassal.get().setKingsVassal(false);
                 }
             }
         }
 
         // сортируем в алфавитном порядке основной лист вассалов, а также
         // листы привязанные к каждому объекту класса Vassal
-        // todo кривовато получилось. производится много лишней работы
         vassalList.sort(Comparator.comparing(Vassal::getName));
         for (Vassal vassal : vassalList) {
-            vassal.vassals.sort(Comparator.comparing(Vassal::getName));
+            if (vassal.vassals != null) {
+                vassal.vassals.sort(Comparator.comparing(Vassal::getName));
+            }
         }
 
         // объявляем короля
         System.out.println("король");
 
-        // просим вассалов рассказать о себе и своих подчинённых,
-        // но только тех (!) у кого флажок false
+        // просим вассалов рассказать о себе и своих подчинённых, но только тех (!) у кого флажок true
         // т.о. мы не увидем дублированной информации
         for (Vassal vassal : vassalList) {
-            if (!vassal.isNotKingsVassal()) {
-                System.out.print(vassal.selfReport("    "));
+            if (vassal.isKingsVassal()) {
+                System.out.print(vassal.selfReport(TAB));
             }
         }
     }
 
     /**
      * вспомогательный метод который ходит в список зарегестрированных вассалов и ищет их по имени
-     * @param vassalList
-     * @param name
-     * @return объект класса Vassal если нашёл, null - если не нашёл
-     *
-     * todo по модному надо возвращать Optional<Vassal>
+     * @return Optional<Vassal>
      */
-    Vassal getExistedVassalByName(List<Vassal> vassalList, String name) {
+    Optional<Vassal> getExistedVassalByName(String name) {
         return vassalList.stream()
-                .filter(v -> v.name.equals(name))
-                .findFirst()
-                .orElse(null);
+                            .filter(v -> v.name.equals(name))
+                            .findFirst();
     }
 }
 
 /**
- * Основной класс, описывающий наших слуг
+ * Основной класс, описывающий вассала. Содержит его имя, список его вассалов, а также
+ * флажок, который говорит нам: является ли подданый прямым вассалом кораля?
+ * По дефолту true (изначально каждый новый вассал - королевский вассал)
+ * False если возникает ситуация когда у текущего вассала появляется другой хозяин
  */
 class Vassal {
 
-
     String name;
-    List<Vassal> vassals = new ArrayList<>();
-
-    // поле, которое говорит нам: есть ли у слуги хозяин, который не является королём
-    // по дефолту false (изначально каждый новый вассал - королевский вассал)
-    // меняется на true если возникает ситуация когда у текущего вассала появляется хозяин
-    boolean notKingsVassal = false;
+    List<Vassal> vassals;
+    boolean KingsVassal = true;
 
     Vassal(String name) {
         this.name = name;
@@ -168,16 +161,15 @@ class Vassal {
         return name;
     }
 
-    public boolean isNotKingsVassal() {
-        return notKingsVassal;
+    public boolean isKingsVassal() {
+        return KingsVassal;
     }
 
-    public void setNotKingsVassal(boolean notKingsVassal) {
-        this.notKingsVassal = notKingsVassal;
+    public void setKingsVassal(boolean kingsVassal) {
+        this.KingsVassal = kingsVassal;
     }
 
     // метод, с помощью которого вассал может рассказать о себе и своих подчинённых
-    // принимает на впуск отступ todo по хорошему надо сделать так, чтобы он ничего не принимал
     String selfReport(String tab) {
 
         StringBuilder result = new StringBuilder();
@@ -185,14 +177,11 @@ class Vassal {
         // докладываем о себе
         result.append(tab).append(name).append("\n");
 
-        // увеличеваем отступ
-        String nextTab = tab + "    ";
-
         // если список вассалов не пустой -> просим каждого подчинённого рассказать о себе
         // вроде рекурсивненько получилось...
-        if (!vassals.isEmpty()) {
+        if (vassals != null) {
             for (Vassal vassal : vassals) {
-                result.append(vassal.selfReport(nextTab));
+                result.append(vassal.selfReport(tab + UnluckyVassal.TAB));
             }
         }
         return result.toString();
